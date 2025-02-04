@@ -10,6 +10,10 @@ class TokenType:
     INTEGER = "INTEGER"
     PLUS = "PLUS"
     MINUS = "MINUS"
+    MUL = "MUL"
+    DIV = "DIV"
+    LPAREN = "LPAREN"
+    RPAREN = "RPAREN"
     EOF = "EOF"  # Означає кінець вхідного рядка
 
 
@@ -26,15 +30,12 @@ class Lexer:
     def __init__(self, text):
         self.text = text
         self.pos = 0
-        self.current_char = self.text[self.pos]
+        self.current_char = self.text[self.pos] if self.text else None
 
     def advance(self):
         """Переміщуємо 'вказівник' на наступний символ вхідного рядка"""
         self.pos += 1
-        if self.pos > len(self.text) - 1:
-            self.current_char = None  # Означає кінець введення
-        else:
-            self.current_char = self.text[self.pos]
+        self.current_char = self.text[self.pos] if self.pos < len(self.text) else None
 
     def skip_whitespace(self):
         """Пропускаємо пробільні символи."""
@@ -66,7 +67,23 @@ class Lexer:
             if self.current_char == "-":
                 self.advance()
                 return Token(TokenType.MINUS, "-")
+            
+            if self.current_char == "*":
+                self.advance()
+                return Token(TokenType.MUL, "*")
 
+            if self.current_char == "/":
+                self.advance()
+                return Token(TokenType.DIV, "/")
+            
+            if self.current_char == "(":
+                self.advance()
+                return Token(TokenType.LPAREN, "(")
+            
+            if self.current_char == ")":
+                self.advance()
+                return Token(TokenType.RPAREN, ")")
+            
             raise LexicalError("Помилка лексичного аналізу")
 
         return Token(TokenType.EOF, None)
@@ -107,11 +124,30 @@ class Parser:
         else:
             self.error()
 
-    def term(self):
-        """Парсер для 'term' правил граматики. У нашому випадку - це цілі числа."""
+    def factor(self):
+        """Обробляє числа або вирази в дужках."""
         token = self.current_token
-        self.eat(TokenType.INTEGER)
-        return Num(token)
+        if token.type == TokenType.INTEGER:
+            self.eat(TokenType.INTEGER)
+            return Num(token)
+        elif token.type == TokenType.LPAREN:
+            self.eat(TokenType.LPAREN)
+            node = self.expr()
+            self.eat(TokenType.RPAREN)
+            return node
+        self.error()
+
+    def term(self):
+        """Обробка множення та ділення."""
+        node = self.factor()
+        while self.current_token.type in (TokenType.MUL, TokenType.DIV):
+            token = self.current_token
+            if token.type == TokenType.MUL:
+                self.eat(TokenType.MUL)
+            elif token.type == TokenType.DIV:
+                self.eat(TokenType.DIV)
+            node = BinOp(left=node, op=token, right=self.factor())
+        return node
 
     def expr(self):
         """Парсер для арифметичних виразів."""
@@ -153,12 +189,17 @@ class Interpreter:
             return self.visit(node.left) + self.visit(node.right)
         elif node.op.type == TokenType.MINUS:
             return self.visit(node.left) - self.visit(node.right)
+        elif node.op.type == TokenType.MUL:
+            return self.visit(node.left) * self.visit(node.right)
+        elif node.op.type == TokenType.DIV:
+            return self.visit(node.left) / self.visit(node.right)
 
     def visit_Num(self, node):
         return node.value
 
     def interpret(self):
         tree = self.parser.expr()
+        print_ast(tree)
         return self.visit(tree)
 
     def visit(self, node):
@@ -181,7 +222,7 @@ def main():
             parser = Parser(lexer)
             interpreter = Interpreter(parser)
             result = interpreter.interpret()
-            print(result)
+            print("Результат:", result)
         except Exception as e:
             print(e)
 
